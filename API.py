@@ -42,23 +42,23 @@ def login():
     密码: password  admin123456
     :return:
     '''
-    get_date = request.get_json()
-    username = get_date.get('username')
-    password = get_date.get('password')
+    get_data = request.get_json()
+    username = get_data.get('username')
+    password = get_data.get('password')
 
     if not all([username, password]):
-        return jsonify(msg = '参数不全')
+        return jsonify(msg='参数不全')
 
     if username == 'admin' and password == 'admin123456':
         # 如果验证通过 登录信息保存在session中
-        session['username']  = username
+        session["username"] = username
         return jsonify(msg='登录成功')
     else:
         return jsonify(msg='账号或密码错误')
 
-#登录
+#登录状态
 @app.route('/session',methods=['GET'])
-def login():
+def check_session():
     username = session.get('username')
     if username is not None:
         #操作逻辑,对数据库数据进行处理之类的
