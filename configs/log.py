@@ -86,8 +86,10 @@ log_time = now.strftime("%Y_%m_%d")
 log_name = str(log_time)
 fn = log_path + log_name + '.log'
 if os.path.exists(fn) is False:
+    # window下使用以下方式
     with open(fn, 'w', encoding='utf-8') as f:
          pass
+    # linux使用以下方式
     # os.mknod(fn)
 logger = logging.getLogger(log_name)
 logger.setLevel(level=logging.INFO)
