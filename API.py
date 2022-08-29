@@ -1,10 +1,12 @@
-import random
-
 from flask import Flask, redirect, request, jsonify, session
+from configs import access_key_id, access_key_secret, endpoint, bucket_name
 from configs.log import logger
 from werkzeug.utils import secure_filename
+import traceback
+import random
 import datetime
 import os
+from utils import uploader, tx_uploader
 # 获取当前文件的绝对路径
 basedir  = os.path.abspath(os.path.dirname(__file__))
 
@@ -25,6 +27,8 @@ class API(object):
             {'r': '/session', 'm': ['GET'], 'f': self.session},
             {'r': '/logout', 'm': ['GET'], 'f': self.logout},
             {'r': '/upload', 'm': ['POST'], 'f': self.upload},
+            {'r': '/uploader', 'm': ['POST'], 'f': self.uploader},
+            {'r': '/tx_uploader', 'm': ['POST'], 'f': self.tx_uploader},
         ]
         for route in routes:
             self.addroute(route)
@@ -75,10 +79,10 @@ class API(object):
 
         if username == 'admin' and password == 'admin123456':
             # 如果验证通过 登录信息保存在session中
-            session['username']  = username
-            return jsonify(msg='登录成功')
+            session['username'] = username
+            return jsonify(statusCode=200, msg='登录成功')
         else:
-            return jsonify(msg='账号或密码错误')
+            return jsonify(statusCode=500, msg='账号或密码错误')
 
     #登录状态
     def session(self):
@@ -95,30 +99,93 @@ class API(object):
         session.clear()
         return jsonify(msg='成功退出登录')
 
-    #图片上传接口
+    # # 文件上传
+    # def upload(self):
+    #     try:
+    #         file1 = request.files.getlist('file1')
+    #         file2 = request.files.getlist('file2')
+    #         if len(file1) != len(file2):
+    #             logger.info('文件数量不一致,请重新输入')
+    #         else:
+    #             upload1_path = []
+    #             for filename1 in file1:
+    #                 filename_1 = secure_filename(filename1.filename)
+    #                 file_name1 = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + "_1" + "." + \
+    #                              filename_1.rsplit('.', 1)[1]
+    #                 file_name2 = file_name1.replace("_1", "-2")
+    #                 file_path = basedir + "/images/"
+    #                 # 判断文件夹是否存在 不存在则创建
+    #                 if not os.path.exists(file_path):
+    #                     os.makedirs(file_path, 755)
+    #                 file1_path = file_path + '/image1/' + file_name1
+    #                 upload1_path.append(file1_path)
+    #                 # 将文件保存到目标文件夹
+    #                 filename1.save(file1_path)
+    #                 upload2_path = []
+    #                 for filename2 in file2:
+    #                     file2_path = file_path + '/image2/' + file_name2
+    #                     upload2_path.append(file2_path)
+    #                     filename2.save(file2_path)
+    #             logger.info("文件上传成功")
+    #         return jsonify({"statusCode": 200, "msg": "success"})
+    #     except Exception as e:
+    #         logger.error(f"文件上传异常异常:{traceback.format_exc()}行数:{e.__traceback__.tb_lineno}")
+    #         return jsonify({"statusCode": 500, "msg": "fail"})
+
+
+    # 图片上传到本地服务器
     def upload(self):
-        f = request.files.get('file')
-        # 获取安全的文件名, 正常的文件名
-        filename = secure_filename(f.filename)
-        # 生成随机数
-        random_num = random.randint(0, 100)
-        # 文件后缀
-        # file_type = f.filename.strip('.', 1)[1]
-        # 把文件重命名
-        filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '_' + str(random_num) + '.' + filename.rsplit('.', 1)[1]
-        if not os.path.exists(filename):
-            os.makedirs(filename, 755)
-        file_path = basedir + '/data_pkg/' + filename
-        f.save(file_path)
+        try:
+            # 对本地文件进行处理
+            f = request.files.get('file')
+            # 获取安全的文件名, 正常的文件名
+            filename = secure_filename(f.filename)
+            # 生成随机数
+            random_num = random.randint(0, 100)
+            # 文件后缀
+            # file_type = f.filename.strip('.', 1)[1]
+            # 把文件重命名
+            filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '_' + str(random_num) + '.' + \
+                       filename.rsplit('.', 1)[1]
 
-        # 可以配置成对应的外网访问链接,
-        my_host = "http://127.0.0.1:5000"
-        new_path_file = my_host + filename
-        data = {"msg": "sussess", "url": new_path_file}
+            file_path = basedir + '/static/file/'
+            # 判断文件夹是否存在, 不存在则创建
+            if not os.path.exists(file_path):
+                os.makedirs(file_path, 755)
+            f.save(file_path + filename)
+            logger.info("已将文件成功保存到本地服务器")
+            # 可以配置成对应的外网访问链接,
+            my_host = "http://127.0.0.1:8088"
+            new_path_file = my_host + '/static/file/' + filename
+            logger.info("前端可访问的链接为:" + new_path_file)
+            return jsonify({"statusCode": 200, "msg": '文件上传到服务器成功', 'url': new_path_file})
+        except Exception as e:
+            logger.error(f"文件保存到服务器异常:{traceback.format_exc()}行数:{e.__traceback__.tb_lineno}")
+            return jsonify({"statusCode": 500, "msg": "文件上传失败"})
 
-        payload = jsonify(data)
-        return payload, 200
-        pass
+    # 上传文件到阿里云服务器
+    def uploader(self):
+        file = request.files.get("file")
+        # 保存图片到对象存储
+        try:
+            file_url = uploader.uploader(file)
+            logger.info("上传文件到阿里云成功")
+            return jsonify({"statusCode": 200, "msg": "保存图片数据成功", "data": file_url})
+        except Exception as e:
+            logger.error(f"图片上传失败:{traceback.format_exc()}行数:{e.__traceback__.tb_lineno}")
+            return jsonify({"statusCode": 500, "msg": "文件上传失败"})
+
+    # 上传文件到腾讯云
+    def tx_uploader(self):
+        file = request.files.get("file")
+        # 保存图片到对象存储
+        try:
+            uploader.uploader(file)
+            logger.info("上传文件到腾讯云成功")
+            return jsonify({"statusCode": 200, "msg": "保存图片数据成功"})
+        except Exception as e:
+            logger.error(f"图片上传失败:{traceback.format_exc()}行数:{e.__traceback__.tb_lineno}")
+            return jsonify({"statusCode": 500, "msg": "文件上传失败"})
 
     @staticmethod
     def start():

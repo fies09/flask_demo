@@ -69,7 +69,7 @@ class StreamHandler(Handler):
 # UTILS = rpath + "/"
 # APP_PATH = rpath[:rpath.rfind('/')] + "/"
 
-log_path = "../logs/"
+log_path = "./logs/"
 
 # todo
 # prod 模式下，目录不对，还不知道为什么
